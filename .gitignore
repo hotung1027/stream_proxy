@@ -33,6 +33,13 @@ cache/
 recordings/
 logs/
 
+# Test artifacts and reports
+coverage/
+test-report.md
+*.coverage
+.nyc_output/
+lcov-report/
+
 # IDE and editor files
 .vscode/
 .idea/
