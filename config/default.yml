@@ -1,0 +1,29 @@
+# Camera Stream Proxy - Default Configuration
+
+server:
+  host: "127.0.0.1"
+  port: 8080
+  api_version: "v1"
+  
+streaming:
+  buffer_size: "100MB"
+  max_concurrent_streams: 50
+  hardware_acceleration: true
+  
+sources:
+  usb:
+    auto_detect: true
+    scan_interval: "30s"
+    
+cache:
+  memory_size: "500MB"
+  disk_path: "./cache"
+  
+outputs:
+  web:
+    enabled: true
+    port: 8081
+    
+logging:
+  level: "info"
+  format: "json" 

@@ -1,0 +1,102 @@
+[package]
+name = "camera-stream-proxy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Camera Stream Team <team@example.com>"]
+description = "High-performance camera streaming proxy with intelligent caching"
+license = "MIT"
+repository = "https://github.com/your-org/camera-stream-proxy"
+readme = "README.md"
+keywords = ["streaming", "camera", "gstreamer", "proxy", "cache"]
+categories = ["multimedia", "network-programming", "web-programming"]
+
+[workspace]
+members = [
+    "src/core",
+    "src/adapters", 
+    "src/cache",
+    "src/formats"
+]
+
+[dependencies]
+# Async runtime and utilities
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = "0.7"
+futures = "0.3"
+
+# GStreamer bindings
+gstreamer = "0.21"
+gstreamer-app = "0.21"
+gstreamer-video = "0.21"
+
+# Network and web
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+hyper = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Configuration
+config = "0.13"
+clap = { version = "4.4", features = ["derive"] }
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Memory management and performance
+crossbeam = "0.8"
+dashmap = "5.5"
+parking_lot = "0.12"
+bytes = "1.5"
+
+# Hashing and compression
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+lz4_flex = "0.11"
+
+# Time utilities
+chrono = { version = "0.4", features = ["serde"] }
+
+# Metrics and monitoring
+prometheus = "0.13"
+metrics = "0.22"
+metrics-prometheus = "0.6"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.8"
+tokio-test = "0.4"
+
+[features]
+default = ["gstreamer-plugins"]
+gstreamer-plugins = []
+hardware-accel = ["gstreamer/v1_20"]
+ros-integration = []
+
+[[bench]]
+name = "stream_processing"
+harness = false
+
+[[bin]]
+name = "stream-engine"
+path = "src/core/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true 

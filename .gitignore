@@ -1,0 +1,92 @@
+# Camera Stream Proxy - Git Ignore
+
+# Build outputs
+target/
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+vendor/
+
+# Configuration and secrets
+.env
+.env.local
+.env.production
+*.key
+*.pem
+config/production.yml
+config/local.yml
+
+# Cache and temporary files
+cache/
+*.tmp
+*.temp
+.cache/
+recordings/
+logs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Language-specific
+
+# Rust
+Cargo.lock
+**/*.rs.bk
+
+# Go
+go.sum
+*.test
+*.out
+
+# Python
+*.egg-info/
+.python-version
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+coverage/
+
+# Docker
+.dockerignore
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+*.log
+*.pid
+*.seed
+*.pid.lock
+core
+dump.rdb 

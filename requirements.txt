@@ -1,0 +1,57 @@
+# Camera Stream Proxy - Python Dependencies
+
+# ROS2 Integration
+rclpy>=3.3.0
+sensor-msgs>=4.2.0
+geometry-msgs>=4.2.0
+std-msgs>=4.2.0
+cv-bridge>=3.4.0
+image-transport>=3.1.0
+
+# Computer Vision and Image Processing
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# Configuration and CLI
+PyYAML>=6.0
+click>=8.1.0
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Networking and Communication
+websockets>=12.0
+aiohttp>=3.9.0
+asyncio-mqtt>=0.13.0
+python-socketio>=5.10.0
+
+# Utilities and Data Handling
+pandas>=2.1.0
+msgpack>=1.0.0
+protobuf>=4.25.0
+redis>=5.0.0
+
+# Monitoring and Logging
+structlog>=23.2.0
+prometheus-client>=0.19.0
+psutil>=5.9.0
+
+# Testing and Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.11.0
+flake8>=6.1.0
+mypy>=1.7.0
+
+# Optional: Advanced Features
+# Uncomment for AI/ML features
+# tensorflow>=2.15.0
+# torch>=2.1.0
+# onnxruntime>=1.16.0
+
+# Uncomment for cloud integration
+# boto3>=1.34.0
+# azure-storage-blob>=12.19.0
+# google-cloud-storage>=2.10.0 
