@@ -1,7 +1,6 @@
 use std::sync::Arc;
-use std::collections::HashMap;
-use tokio::sync::{RwLock, mpsc, oneshot};
-use tracing::{info, warn, error, debug};
+use tokio::sync::{mpsc, oneshot};
+use tracing::{info, error, warn, debug};
 use anyhow::Result;
 use dashmap::DashMap;
 
@@ -12,7 +11,7 @@ pub mod cache;
 pub mod pipeline;
 
 use sources::{SourceManager, SourceId, StreamSource};
-use cache::{StreamCache, CachedFrame};
+use cache::StreamCache;
 use pipeline::{StreamPipeline, PipelineConfig};
 
 /// Main stream engine that orchestrates all streaming operations

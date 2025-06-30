@@ -1,0 +1,39 @@
+[package]
+name = "camera-stream-adapters"
+version = "0.1.0"
+edition = "2021"
+authors = ["Camera Stream Team <team@example.com>"]
+description = "Camera source adapters for the camera stream proxy"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# GStreamer bindings for camera sources
+gstreamer = "0.21"
+gstreamer-app = "0.21"
+gstreamer-video = "0.21"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Core camera stream types
+camera-stream-core = { path = "../core" }
+
+[lib]
+name = "camera_stream_adapters"
+path = "lib.rs"
+
+[features]
+default = []
+usb-cameras = []
+rtsp-sources = []
+sdk-cameras = [] 

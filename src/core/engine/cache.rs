@@ -3,24 +3,36 @@ use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use tokio::sync::{RwLock, Mutex};
 use tokio::fs;
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, debug};
 use anyhow::Result;
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use xxhash_rust::xxh64::{Xxh64, xxh64};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
+use serde::{Serialize, Deserialize};
 
 use super::sources::SourceId;
 
 /// A cached frame with metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedFrame {
-    pub source_id: SourceId,
-    pub sequence_number: u64,
+    /// The actual frame data
+    pub data: Vec<u8>,
+    
+    /// When this frame was cached
     pub timestamp: DateTime<Utc>,
+    
+    /// Source ID that produced this frame
+    pub source_id: SourceId,
+    
+    /// Frame sequence number
+    pub sequence_number: u64,
+    
+    /// Original frame format
     pub format: String,
+    
+    /// Resolution of the frame
     pub resolution: (u32, u32),
-    pub data: Bytes,
+    
+    /// Whether the data is compressed
     pub compressed: bool,
 }
 
@@ -41,7 +53,7 @@ struct CacheNode {
 }
 
 /// Statistics for cache performance monitoring
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CacheStats {
     pub total_frames: usize,
     pub memory_usage: usize,
@@ -305,7 +317,7 @@ impl StreamCache {
     /// Compress frame data
     async fn compress_frame(&self, mut frame: CachedFrame) -> Result<CachedFrame> {
         let compressed_data = compress_prepend_size(&frame.data);
-        frame.data = Bytes::from(compressed_data);
+        frame.data = compressed_data;
         frame.compressed = true;
         Ok(frame)
     }
@@ -315,7 +327,7 @@ impl StreamCache {
         if frame.compressed {
             let decompressed_data = decompress_size_prepended(&frame.data)
                 .map_err(|e| anyhow::anyhow!("Decompression failed: {}", e))?;
-            frame.data = Bytes::from(decompressed_data);
+            frame.data = decompressed_data;
             frame.compressed = false;
         }
         Ok(frame)
@@ -510,7 +522,7 @@ mod tests {
             timestamp: Utc::now(),
             format: "YUY2".to_string(),
             resolution: (640, 480),
-            data: Bytes::from(vec![0u8; 1024]), // 1KB test data
+            data: vec![0u8; 1024], // 1KB test data
             compressed: false,
         }
     }

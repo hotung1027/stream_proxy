@@ -56,11 +56,10 @@ async fn main() -> Result<()> {
     // Create shared configuration
     let config = Arc::new(config);
     
-    // Initialize stream engine
-    let stream_engine = StreamEngine::new(config.clone()).await?;
-    info!("Stream engine initialized");
+    // Create stream engine
+    let stream_engine = Arc::new(StreamEngine::new(config.clone()).await?);
     
-    // Start API server
+    // Create API server
     let api_server = ApiServer::new(config.clone(), stream_engine.clone()).await?;
     
     // Start services

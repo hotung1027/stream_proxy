@@ -1,14 +1,13 @@
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc, oneshot};
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, error};
 use anyhow::Result;
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
-use bytes::Bytes;
 use chrono::Utc;
 
-use super::sources::{SourceId, StreamSource};
+use super::sources::StreamSource;
 use super::cache::{StreamCache, CachedFrame};
 
 /// Configuration for stream pipeline
@@ -69,7 +68,7 @@ impl StreamPipeline {
     
     /// Start the pipeline
     pub async fn start(&self) -> Result<()> {
-        let (response_tx, response_rx) = oneshot::channel();
+        let (_response_tx, _response_rx) = oneshot::channel::<Result<(), String>>();
         self.command_sender.send(PipelineCommand::Start)?;
         Ok(())
     }
@@ -143,7 +142,8 @@ impl StreamPipeline {
     
     /// Create the GStreamer pipeline
     async fn create_pipeline(&self) -> Result<gst::Pipeline> {
-        let pipeline = gst::Pipeline::new(Some(&format!("pipeline-{}", self.source.id.0)));
+        let pipeline = gst::Pipeline::new();
+        pipeline.set_property("name", &format!("pipeline-{}", self.source.id.0));
         
         // Create source element based on source type
         let source_element = match self.source.source_type {
@@ -258,13 +258,14 @@ impl StreamPipeline {
             .build()?;
             
         // Create a bin to contain both elements
-        let bin = gst::Bin::new(Some("usb_source_bin"));
+        let bin = gst::Bin::new();
+        bin.set_property("name", "usb_source_bin");
         bin.add_many(&[&source, &caps_filter])?;
         source.link(&caps_filter)?;
         
-        // Create ghost pad
+        // Create ghost pad for the bin
         let src_pad = caps_filter.static_pad("src").unwrap();
-        let ghost_pad = gst::GhostPad::with_target(Some("src"), &src_pad)?;
+        let ghost_pad = gst::GhostPad::with_target(&src_pad)?;
         bin.add_pad(&ghost_pad)?;
         
         Ok(bin.upcast())
@@ -306,57 +307,56 @@ impl StreamPipeline {
         Ok(encoder)
     }
     
-    /// Set up frame processing callbacks
+    /// Set up frame callbacks for processing
     async fn setup_frame_callbacks(&self, pipeline: &gst::Pipeline) -> Result<()> {
-        let cache_sink = pipeline
-            .by_name("cache_sink")
-            .unwrap()
-            .downcast::<gst_app::AppSink>()
-            .unwrap();
-            
+        let appsink = pipeline
+            .by_name("appsink")
+            .ok_or_else(|| anyhow::anyhow!("Failed to find appsink"))?
+            .dynamic_cast::<gst_app::AppSink>()
+            .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
+        
+        // Clone necessary data before moving into the callback
         let cache = self.cache.clone();
         let source_id = self.source.id;
-        let sequence_number = self.sequence_number.clone();
+        let source_format = self.source.format.clone();
+        let source_resolution = self.source.resolution;
         
-        cache_sink.set_callbacks(
+        appsink.set_callbacks(
             gst_app::AppSinkCallbacks::builder()
                 .new_sample(move |appsink| {
                     let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Eos)?;
                     let buffer = sample.buffer().ok_or(gst::FlowError::Error)?;
                     
-                    // Extract frame data
+                    // Get buffer data
                     let map = buffer.map_readable().map_err(|_| gst::FlowError::Error)?;
-                    let data = Bytes::copy_from_slice(&map);
+                    let data = map.as_slice();
                     
-                    // Get caps for format information
-                    let caps = sample.caps().ok_or(gst::FlowError::Error)?;
-                    let structure = caps.structure(0).ok_or(gst::FlowError::Error)?;
+                    // Get frame metadata
+                    let caps = sample.caps().ok_or(gst::FlowError::NotNegotiated)?;
+                    let structure = caps.structure(0).ok_or(gst::FlowError::NotNegotiated)?;
                     
-                    let width = structure.get::<i32>("width").unwrap_or(0) as u32;
-                    let height = structure.get::<i32>("height").unwrap_or(0) as u32;
-                    let format = structure.get::<String>("format").unwrap_or_else(|_| "unknown".to_string());
+                    let _width = structure.get::<i32>("width").unwrap_or(0) as u32;
+                    let _height = structure.get::<i32>("height").unwrap_or(0) as u32;
+                    let _format = structure.get::<String>("format").unwrap_or_else(|_| "unknown".to_string());
+                    
+                    // Get frame number
+                    let frame_number = buffer.offset();
                     
                     // Create cached frame
-                    let seq_num = {
-                        let mut seq = sequence_number.blocking_write();
-                        *seq += 1;
-                        *seq
-                    };
-                    
-                    let cached_frame = CachedFrame {
+                    let frame = CachedFrame {
                         source_id,
-                        sequence_number: seq_num,
+                        sequence_number: frame_number,
                         timestamp: Utc::now(),
-                        format,
-                        resolution: (width, height),
-                        data,
+                        format: source_format.clone(),
+                        resolution: source_resolution,
+                        data: data.to_vec(),
                         compressed: false,
                     };
                     
                     // Cache the frame asynchronously
                     let cache_clone = cache.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = cache_clone.put_frame(cached_frame).await {
+                        if let Err(e) = cache_clone.put_frame(frame).await {
                             warn!("Failed to cache frame: {}", e);
                         }
                     });
@@ -388,7 +388,7 @@ impl Clone for StreamPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::engine::sources::{SourceType, StreamSource};
+    use crate::engine::sources::{SourceType, StreamSource, SourceId};
     use tempfile::TempDir;
     
     async fn create_test_pipeline() -> StreamPipeline {
@@ -396,7 +396,7 @@ mod tests {
         let cache = Arc::new(StreamCache::new(1024 * 1024, temp_dir.path()).await.unwrap());
         
         let source = StreamSource {
-            id: super::sources::SourceId(1),
+            id: SourceId(1),
             name: "Test Camera".to_string(),
             device_path: "/dev/video0".to_string(),
             source_type: SourceType::UsbCamera,

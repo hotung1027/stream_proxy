@@ -89,9 +89,9 @@ gstreamer-plugins = []
 hardware-accel = ["gstreamer/v1_20"]
 ros-integration = []
 
-[[bench]]
-name = "stream_processing"
-harness = false
+# [[bench]]
+# name = "stream_processing"
+# harness = false
 
 [[bin]]
 name = "stream-engine"

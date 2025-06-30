@@ -1,0 +1,42 @@
+[package]
+name = "camera-stream-formats"
+version = "0.1.0"
+edition = "2021"
+authors = ["Camera Stream Team <team@example.com>"]
+description = "Format conversion utilities for camera stream proxy"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# GStreamer bindings for format conversion
+gstreamer = "0.21"
+gstreamer-app = "0.21"
+gstreamer-video = "0.21"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Memory management
+bytes = "1.5"
+
+# Core camera stream types
+camera-stream-core = { path = "../core" }
+
+[lib]
+name = "camera_stream_formats"
+path = "lib.rs"
+
+[features]
+default = ["hardware-accel"]
+hardware-accel = ["gstreamer/v1_20"]
+software-only = []
+gpu-acceleration = [] 

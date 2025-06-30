@@ -1,15 +1,16 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, debug};
 use anyhow::Result;
 use gstreamer as gst;
 use gstreamer::prelude::*;
+use serde::{Serialize, Deserialize};
 
 use crate::config::Config;
 
 /// Unique identifier for a stream source
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SourceId(pub u32);
 
 /// Represents a camera or stream source
@@ -114,9 +115,9 @@ impl SourceManager {
         let caps = gst::Caps::builder("video/x-raw").build();
         device_monitor.add_filter(Some("Video/Source"), Some(&caps));
         
-        if !device_monitor.start() {
-            return Err(anyhow::anyhow!("Failed to start GStreamer device monitor"));
-        }
+        // Start monitoring
+        device_monitor.start()
+            .map_err(|e| anyhow::anyhow!("Failed to start device monitor: {}", e))?;
         
         let devices = device_monitor.devices();
         device_monitor.stop();
@@ -175,7 +176,12 @@ impl SourceManager {
         
         let device_path = properties
             .get::<String>("device.path")
-            .unwrap_or_else(|| format!("/dev/video{}", self.generate_source_id().await));
+            .unwrap_or_else(|_err| {
+                // Use a static counter for fallback IDs
+                static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1000);
+                let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                format!("/dev/video{}", id)
+            });
         
         // Probe device capabilities
         let (resolution, framerate, format, capabilities) = self.probe_device_capabilities(device)?;
