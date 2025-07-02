@@ -1,5 +1,9 @@
 # Camera Stream Proxy - Git Ignore
 
+# Security
+.trunk/*
+
+
 # Build outputs
 target/
 dist/
@@ -43,6 +47,7 @@ lcov-report/
 # IDE and editor files
 .vscode/
 .idea/
+.cursor/*
 *.swp
 *.swo
 *~
@@ -95,5 +100,4 @@ Thumbs.db
 *.pid
 *.seed
 *.pid.lock
-core
 dump.rdb 

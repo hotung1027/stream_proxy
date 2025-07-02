@@ -23,6 +23,7 @@ pydantic-settings>=2.1.0
 # Networking and Communication
 websockets>=12.0
 aiohttp>=3.9.0
+aiohttp-cors>=0.7.0
 asyncio-mqtt>=0.13.0
 python-socketio>=5.10.0
 
