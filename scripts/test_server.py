@@ -16,10 +16,22 @@ import logging
 import os
 import sys
 from pathlib import Path
+import datetime
+import base64
 
 import aiohttp
 from aiohttp import web
 import aiohttp_cors
+
+# Optional imports for simulation mode
+try:
+    import numpy as np
+    import cv2
+
+    SIMULATION_AVAILABLE = True
+except ImportError:
+    SIMULATION_AVAILABLE = False
+    print("Warning: numpy and/or opencv not available. Simulation mode disabled.")
 
 # Configure logging
 logging.basicConfig(
@@ -194,10 +206,6 @@ class StreamSimulator:
 
     def generate_test_frame(self, camera_id):
         """Generate a test frame for a camera"""
-        import numpy as np
-        import cv2
-        import base64
-
         # Create a test image with camera ID
         img = np.zeros((480, 640, 3), dtype=np.uint8)
 
@@ -213,8 +221,6 @@ class StreamSimulator:
         )
 
         # Add timestamp
-        import datetime
-
         timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
         cv2.putText(
             img, timestamp, (50, 400), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
@@ -287,6 +293,10 @@ def main():
     server = TestServer(port=args.port, api_url=args.api_url)
 
     if args.simulate:
+        if not SIMULATION_AVAILABLE:
+            logger.error("Simulation mode requested but numpy/opencv not available")
+            logger.error("Install with: pip install numpy opencv-python")
+            sys.exit(1)
         logger.info("Running in simulation mode - no real cameras needed")
         simulator = StreamSimulator()
         # You could extend this to mock the API responses

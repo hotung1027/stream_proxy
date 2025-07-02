@@ -23,6 +23,8 @@ pub struct RtspServerConfig {
     pub host: String,
     pub port: u16,
     pub auth_enabled: bool,
+    pub auth_username: Option<String>,
+    pub auth_password: Option<String>,
     pub max_clients: u32,
     pub protocols: Vec<String>, // ["rtsp", "rtsps", "rtmp"]
 }
@@ -187,6 +189,12 @@ impl RtspServer {
     fn setup_authentication(&self, server: &gst_rtsp::RTSPServer) -> Result<()> {
         let auth = gst_rtsp::RTSPAuth::new();
         
+        // Get credentials from config
+        let username = self.config.auth_username.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Authentication enabled but no username provided"))?;
+        let password = self.config.auth_password.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Authentication enabled but no password provided"))?;
+        
         // Create token for basic authentication
         let token = gst_rtsp::RTSPToken::new(&[
             ("media.factory.role", &"user"),
@@ -194,12 +202,12 @@ impl RtspServer {
         
         // Set up basic authentication
         auth.set_tls_certificate(None);
-        let basic = gst_rtsp::RTSPAuth::make_basic("user", "password");
+        let basic = gst_rtsp::RTSPAuth::make_basic(username, password);
         auth.add_basic(&basic, &token);
         
         server.set_auth(Some(&auth));
         
-        info!("RTSP authentication enabled");
+        info!("RTSP authentication enabled for user: {}", username);
         Ok(())
     }
     
@@ -233,6 +241,8 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 8554,
             auth_enabled: false,
+            auth_username: None,
+            auth_password: None,
             max_clients: 10,
             protocols: vec!["rtsp".to_string()],
         };
