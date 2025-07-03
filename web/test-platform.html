@@ -574,6 +574,15 @@
                         const sources = data.data || [];
                         this.log('success', `Found ${sources.length} camera(s)`);
                         this.updateVideoGrid(sources);
+                        
+                        // Auto-start streams for all discovered cameras
+                        if (sources.length > 0) {
+                            this.log('info', 'Auto-starting camera streams...');
+                            for (const source of sources) {
+                                await this.startStream(source.id);
+                                await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between starts
+                            }
+                        }
                     }
                 } catch (error) {
                     this.log('error', `Camera discovery failed: ${error.message}`);
@@ -686,14 +695,40 @@
                     const response = await fetch(`${this.apiUrl}/api/v1/rtsp/${sourceId}/latest`);
                     if (response.ok) {
                         const data = await response.json();
-                        if (data.data && data.data.data) {
+                        if (data.success && data.data && data.data.data) {
                             const player = document.getElementById(`player-${sourceId}`);
-                            player.innerHTML = `<img src="data:image/jpeg;base64,${data.data.data}" alt="Stream ${sourceId}">`;
+                            if (player) {
+                                player.innerHTML = `<img src="data:image/jpeg;base64,${data.data.data}" alt="Stream ${sourceId}">`;
+                            }
+                        } else if (data.success && data.data) {
+                            // Handle case where data.data is the base64 string directly
+                            const player = document.getElementById(`player-${sourceId}`);
+                            if (player) {
+                                player.innerHTML = `<img src="data:image/jpeg;base64,${data.data}" alt="Stream ${sourceId}">`;
+                            }
                         }
+                    } else if (response.status === 404) {
+                        // No frames available yet, this is normal at startup
+                        // Don't log error, just skip
                     }
                 } catch (error) {
-                    // Silent fail for frame updates
+                    // Silent fail for frame updates to avoid spamming logs
+                    if (error.message.includes('Failed to fetch')) {
+                        // Connection error - might need to restart stream
+                        const stream = this.streams.get(sourceId);
+                        if (stream && stream.active) {
+                            this.log('warn', `Lost connection to stream ${sourceId}, attempting to reconnect...`);
+                            await this.restartStream(sourceId);
+                        }
+                    }
                 }
+            }
+            
+            async restartStream(sourceId) {
+                // Stop and restart stream
+                await this.stopStream(sourceId);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                await this.startStream(sourceId);
             }
             
             async getSnapshot(sourceId) {

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::{RwLock, mpsc, oneshot};
+use tokio::sync::{RwLock, mpsc, oneshot, Mutex};
 use tracing::{info, warn, error};
 use anyhow::Result;
 use gstreamer as gst;
@@ -30,7 +30,7 @@ pub struct StreamPipeline {
     source: StreamSource,
     config: PipelineConfig,
     cache: Arc<StreamCache>,
-    pipeline: Option<gst::Pipeline>,
+    pipeline: Arc<Mutex<Option<gst::Pipeline>>>,
     command_sender: mpsc::UnboundedSender<PipelineCommand>,
     consumer_count: Arc<RwLock<usize>>,
     sequence_number: Arc<RwLock<u64>>,
@@ -51,7 +51,7 @@ impl StreamPipeline {
             source,
             config,
             cache,
-            pipeline: None,
+            pipeline: Arc::new(Mutex::new(None)),
             command_sender,
             consumer_count: Arc::new(RwLock::new(0)),
             sequence_number: Arc::new(RwLock::new(0)),
@@ -121,6 +121,12 @@ impl StreamPipeline {
         // Set up callbacks for frame processing
         self.setup_frame_callbacks(&pipeline).await?;
         
+        // Store the pipeline
+        {
+            let mut pipeline_guard = self.pipeline.lock().await;
+            *pipeline_guard = Some(pipeline.clone());
+        }
+        
         // Start the pipeline
         pipeline.set_state(gst::State::Playing)?;
         
@@ -132,7 +138,8 @@ impl StreamPipeline {
     async fn handle_stop(&self) -> Result<()> {
         info!("Stopping pipeline for source: {}", self.source.name);
         
-        if let Some(pipeline) = &self.pipeline {
+        let pipeline_guard = self.pipeline.lock().await;
+        if let Some(pipeline) = pipeline_guard.as_ref() {
             pipeline.set_state(gst::State::Null)?;
         }
         
@@ -164,7 +171,17 @@ impl StreamPipeline {
             .name("scale")
             .build()?;
             
-        // Create encoder based on configuration
+        // Create tee for multiple outputs before encoding
+        let tee = gst::ElementFactory::make("tee")
+            .name("tee")
+            .build()?;
+            
+        // === RTSP Branch ===
+        let rtsp_queue = gst::ElementFactory::make("queue")
+            .name("rtsp_queue")
+            .build()?;
+            
+        // Create encoder based on configuration for RTSP
         let encoder = if self.config.hardware_acceleration {
             self.create_hardware_encoder().await.unwrap_or_else(|_| {
                 warn!("Hardware encoder not available, falling back to software encoder");
@@ -174,26 +191,6 @@ impl StreamPipeline {
             self.create_software_encoder()?
         };
         
-        // Create tee for multiple outputs
-        let tee = gst::ElementFactory::make("tee")
-            .name("tee")
-            .build()?;
-            
-        // Create queue for caching branch
-        let cache_queue = gst::ElementFactory::make("queue")
-            .name("cache_queue")
-            .build()?;
-            
-        // Create appsink for frame caching
-        let cache_sink = gst_app::AppSink::builder()
-            .name("cache_sink")
-            .build();
-            
-        // Create queue for RTSP branch
-        let rtsp_queue = gst::ElementFactory::make("queue")
-            .name("rtsp_queue")
-            .build()?;
-            
         // Create RTSP elements
         let rtp_pay = gst::ElementFactory::make("rtph264pay")
             .name("rtp_pay")
@@ -205,34 +202,52 @@ impl StreamPipeline {
             .property("port", 5000 + self.source.id.0 as i32)
             .build()?;
         
+        // === Cache Branch (JPEG) ===
+        let cache_queue = gst::ElementFactory::make("queue")
+            .name("cache_queue")
+            .build()?;
+            
+        // Add JPEG encoder for web display
+        let jpeg_enc = gst::ElementFactory::make("jpegenc")
+            .name("jpeg_enc")
+            .property("quality", 85i32)
+            .build()?;
+            
+        // Create appsink for frame caching
+        let cache_sink = gst_app::AppSink::builder()
+            .name("cache_sink")
+            .build();
+        
         // Add elements to pipeline
         pipeline.add_many(&[
             &source_element,
             &convert,
             &scale,
-            &encoder,
             &tee,
-            &cache_queue,
-            cache_sink.upcast_ref(),
             &rtsp_queue,
+            &encoder,
             &rtp_pay,
             &rtsp_sink,
+            &cache_queue,
+            &jpeg_enc,
+            cache_sink.upcast_ref(),
         ])?;
         
-        // Link main pipeline
+        // Link main pipeline up to tee
         source_element.link(&convert)?;
         convert.link(&scale)?;
-        scale.link(&encoder)?;
-        encoder.link(&tee)?;
-        
-        // Link caching branch
-        tee.link(&cache_queue)?;
-        cache_queue.link(&cache_sink)?;
+        scale.link(&tee)?;
         
         // Link RTSP branch
         tee.link(&rtsp_queue)?;
-        rtsp_queue.link(&rtp_pay)?;
+        rtsp_queue.link(&encoder)?;
+        encoder.link(&rtp_pay)?;
         rtp_pay.link(&rtsp_sink)?;
+        
+        // Link caching branch
+        tee.link(&cache_queue)?;
+        cache_queue.link(&jpeg_enc)?;
+        jpeg_enc.link(&cache_sink)?;
         
         Ok(pipeline)
     }
@@ -310,8 +325,8 @@ impl StreamPipeline {
     /// Set up frame callbacks for processing
     async fn setup_frame_callbacks(&self, pipeline: &gst::Pipeline) -> Result<()> {
         let appsink = pipeline
-            .by_name("appsink")
-            .ok_or_else(|| anyhow::anyhow!("Failed to find appsink"))?
+            .by_name("cache_sink")
+            .ok_or_else(|| anyhow::anyhow!("Failed to find cache_sink"))?
             .dynamic_cast::<gst_app::AppSink>()
             .map_err(|_| anyhow::anyhow!("Failed to cast to AppSink"))?;
         
@@ -320,6 +335,7 @@ impl StreamPipeline {
         let source_id = self.source.id;
         let source_format = self.source.format.clone();
         let source_resolution = self.source.resolution;
+        let sequence_number = self.sequence_number.clone();
         
         appsink.set_callbacks(
             gst_app::AppSinkCallbacks::builder()
@@ -339,18 +355,29 @@ impl StreamPipeline {
                     let _height = structure.get::<i32>("height").unwrap_or(0) as u32;
                     let _format = structure.get::<String>("format").unwrap_or_else(|_| "unknown".to_string());
                     
-                    // Get frame number
-                    let frame_number = buffer.offset();
+                    // Get frame number (increment sequence)
+                    let frame_number = {
+                        let sequence_clone = sequence_number.clone();
+                        tokio::task::block_in_place(|| {
+                            let runtime = tokio::runtime::Handle::current();
+                            runtime.block_on(async {
+                                let mut seq = sequence_clone.write().await;
+                                let current = *seq;
+                                *seq += 1;
+                                current
+                            })
+                        })
+                    };
                     
-                    // Create cached frame
+                    // Create cached frame (JPEG data)
                     let frame = CachedFrame {
                         source_id,
                         sequence_number: frame_number,
                         timestamp: Utc::now(),
-                        format: source_format.clone(),
+                        format: "JPEG".to_string(), // Changed to JPEG since we're caching JPEG encoded frames
                         resolution: source_resolution,
                         data: data.to_vec(),
-                        compressed: false,
+                        compressed: true, // JPEG is already compressed
                     };
                     
                     // Cache the frame asynchronously
@@ -377,7 +404,7 @@ impl Clone for StreamPipeline {
             source: self.source.clone(),
             config: self.config.clone(),
             cache: self.cache.clone(),
-            pipeline: None, // Don't clone the actual pipeline
+            pipeline: self.pipeline.clone(),
             command_sender: self.command_sender.clone(),
             consumer_count: self.consumer_count.clone(),
             sequence_number: self.sequence_number.clone(),
