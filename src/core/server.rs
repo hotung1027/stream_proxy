@@ -11,6 +11,7 @@ use tower_http::cors::CorsLayer;
 use tracing::{info, warn, error};
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
+use serde_json;
 
 use crate::config::Config;
 use crate::engine::StreamEngine;
@@ -436,14 +437,27 @@ async fn clear_cache(
 async fn get_latest_frame(
     Path(source_id): Path<u32>,
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<String>>, StatusCode> {
+) -> Result<Json<ApiResponse<serde_json::Value>>, StatusCode> {
     let source_id = SourceId(source_id);
     
     match state.engine.stream_cache.get_latest_frame(source_id).await {
         Some(frame) => {
             // Convert frame to base64 for JSON response
             let encoded = general_purpose::STANDARD.encode(&frame.data);
-            Ok(success_response(encoded))
+            
+            // Create nested structure that client expects
+            let frame_data = serde_json::json!({
+                "data": encoded,
+                "timestamp": frame.timestamp.to_rfc3339(),
+                "sequence_number": frame.sequence_number,
+                "format": frame.format,
+                "resolution": {
+                    "width": frame.resolution.0,
+                    "height": frame.resolution.1
+                }
+            });
+            
+            Ok(success_response(frame_data))
         }
         None => Err(StatusCode::NOT_FOUND),
     }

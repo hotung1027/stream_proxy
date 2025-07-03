@@ -7,10 +7,12 @@ use anyhow::Result;
 mod engine;
 mod config;
 mod server;
+// mod rtsp_server;  // Temporarily disabled for testing
 
 use crate::engine::StreamEngine;
 use crate::config::Config;
 use crate::server::ApiServer;
+// use crate::rtsp_server::{RtspServer, RtspServerConfig};  // Temporarily disabled
 
 /// Camera Stream Proxy - High-performance camera streaming engine
 #[derive(Parser, Debug)]
